@@ -150,3 +150,6 @@ Thumbs.db
 # IDEs
 .vscode/
 .idea/
+
+# Project Goals
+goal.txt
