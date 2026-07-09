@@ -7,8 +7,8 @@ import logging
 
 import requests
 
-from .auth import authenticator
-from ..config.settings import settings
+from ingestion.auth import authenticator
+from shared.settings import settings
 
 
 class GraphAPIError(Exception):

@@ -20,7 +20,7 @@ logging.basicConfig(
 # ─────────────────────────────────────────────────────────────────────
 
 # Load environment from the workspace root's .env file
-workspace_root = Path(__file__).resolve().parents[2]
+workspace_root = Path(__file__).resolve().parent.parent
 dotenv_path = workspace_root / ".env"
 if dotenv_path.exists():
     load_dotenv(dotenv_path=dotenv_path)
@@ -32,12 +32,12 @@ if str(workspace_root) not in sys.path:
     sys.path.append(str(workspace_root))
 
 try:
-    from packages.shared.graph_core.config.settings import settings
-    from packages.shared.graph_core.clients.auth import authenticator
-    from packages.shared.graph_core.utils.selector_cli import SelectorCLI
-    from packages.shared.graph_core.clients.graph_client import graph_client
+    from shared.settings import settings
+    from ingestion.auth import authenticator
+    from ingestion.selector_cli import SelectorCLI
+    from ingestion.graph_client import graph_client
 except ImportError as e:
-    logging.error("Failed to import modules from local packages.shared.graph_core. "
+    logging.error("Failed to import modules from local shared or ingestion packages. "
                   "Verify local files exist and dependencies are installed.")
     raise e
 
@@ -356,7 +356,7 @@ def save_teams_messages(messages: list[dict], team_name: str, channel_name: str)
             grouped[date_key] = []
         grouped[date_key].append(msg)
         
-    base_dir = Path(__file__).resolve().parents[2] / "packages" / "raw_data" / "raw teams messges"
+    base_dir = Path(__file__).resolve().parent.parent / "data" / "raw_teams_messages"
     
     for date_key, msgs in grouped.items():
         # Create output directory for the specific date
@@ -398,7 +398,7 @@ def save_outlook_messages(messages: list[dict], user_id: str):
             grouped[date_key] = []
         grouped[date_key].append(msg)
         
-    base_dir = Path(__file__).resolve().parents[2] / "packages" / "raw_data" / "raw outlook messages"
+    base_dir = Path(__file__).resolve().parent.parent / "data" / "raw_outlook_messages"
     
     for date_key, msgs in grouped.items():
         # Create output directory for the specific date

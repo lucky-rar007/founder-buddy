@@ -12,7 +12,7 @@ from typing import Any
 
 import requests
 
-from ..config.settings import settings
+from shared.settings import settings
 
 
 class AuthenticationError(Exception):
@@ -66,6 +66,12 @@ class GraphAuthenticator:
 
         return datetime.now(UTC) < self._expires_at
 
+    def refresh_token(self) -> None:
+        """
+        Public wrapper to refresh the authentication token.
+        """
+        self._refresh_token()
+
     def _refresh_token(self) -> None:
         """
         Request a new token from Microsoft.
@@ -111,5 +117,6 @@ class GraphAuthenticator:
             datetime.now(UTC)
             + timedelta(seconds=expires_in - 60)
         )
+
 
 authenticator = GraphAuthenticator()

@@ -1,4 +1,4 @@
-from ..clients.graph_client import graph_client
+from ingestion.graph_client import graph_client
 
 
 class SelectorCLI:

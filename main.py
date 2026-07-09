@@ -6,7 +6,7 @@ workspace_path = Path(__file__).resolve().parent
 if str(workspace_path) not in sys.path:
     sys.path.append(str(workspace_path))
 
-from apps.jobs.ingestor import run_manual, run_scheduler_daemon, configure_schedule
+from ingestion.ingestor import run_manual, run_scheduler_daemon, configure_schedule
 
 def main():
     import argparse
