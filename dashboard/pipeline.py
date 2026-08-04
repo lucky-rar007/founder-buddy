@@ -941,6 +941,10 @@ def run_full_pipeline(api_key: str = None, run_type: str = "scheduled", progress
         for sig in generated_signals:
             add_signal(sig)
 
+        # Persist AI-extracted actionables (was missing — this is why actionables were empty)
+        for act in actionables:
+            add_actionable(act)
+
         # Direct AI-extracted dragging_issue signal registration
         for ev in extracted_events:
             if ev.get("signal_type") == "dragging_issue":

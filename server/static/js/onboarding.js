@@ -69,6 +69,7 @@ const OnboardingWizard = (() => {
     // ─── Render Functions ──────────────────────────────────────
 
     function render(container) {
+        currentStep = 1; // Always start from Step 1 when wizard is shown/re-shown
         container.innerHTML = '';
         container.style.display = 'block';
 
