@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Founder Buddy — Command Dashboard</title>
+    <meta name="description" content="Founder Buddy intelligent workspace dashboard — organizational health monitoring, signal tracking, and actionable intelligence.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header" id="header">
+        <div class="header-left">
+            <div class="logo">
+                <div class="logo-icon">F</div>
+                <div class="logo-text">
+                    <h1>Founder Buddy</h1>
+                    <span class="logo-subtitle">Command Dashboard</span>
+                </div>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="pipeline-status" id="pipeline-status">
+                <span class="status-dot" id="status-dot"></span>
+                <span class="status-text" id="status-text">Ready</span>
+            </div>
+            <button class="btn btn-primary" id="btn-run-pipeline" onclick="runPipeline()">
+                <span class="btn-icon">▶</span>
+                Run Pipeline
+            </button>
+            <button class="btn btn-ghost" id="btn-refresh" onclick="refreshDashboard()">
+                <span class="btn-icon">↻</span>
+                Refresh
+            </button>
+        </div>
+    </header>
+
+    <!-- Stats Bar -->
+    <section class="stats-bar" id="stats-bar">
+        <div class="stat-card">
+            <div class="stat-value" id="stat-threads">0</div>
+            <div class="stat-label">Threads</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="stat-events">0</div>
+            <div class="stat-label">Events</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="stat-signals">0</div>
+            <div class="stat-label">Signals</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="stat-actionables">0</div>
+            <div class="stat-label">Actionables</div>
+        </div>
+        <div class="stat-card stat-warning">
+            <div class="stat-value" id="stat-dragging">0</div>
+            <div class="stat-label">Dragging Issues</div>
+        </div>
+    </section>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Cluster Health Grid -->
+        <section class="section" id="cluster-section">
+            <div class="section-header">
+                <h2 class="section-title">Organizational Health</h2>
+                <span class="section-badge" id="cluster-count">0 clusters</span>
+            </div>
+            <div class="cluster-grid" id="cluster-grid">
+                <!-- Cluster cards rendered by JS -->
+                <div class="empty-state" id="cluster-empty">
+                    <h3>No Health Data Yet</h3>
+                    <p>Run the pipeline to analyze your Teams and Outlook communications and generate organizational health insights.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Two-column layout: Actionables + Dragging Issues -->
+        <div class="dual-panel">
+            <!-- Actionables Panel -->
+            <section class="section panel" id="actionables-section">
+                <div class="section-header">
+                    <h2 class="section-title">Actionables Feed</h2>
+                    <span class="section-badge" id="actionables-count">0 items</span>
+                </div>
+                <div class="actionables-list" id="actionables-list">
+                    <div class="empty-state small" id="actionables-empty">
+                        <p>No actionables detected yet.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Dragging Issues Panel -->
+            <section class="section panel" id="dragging-section">
+                <div class="section-header">
+                    <h2 class="section-title">Dragging Issues</h2>
+                    <span class="section-badge badge-warning" id="dragging-count">0 issues</span>
+                </div>
+                <div class="dragging-list" id="dragging-list">
+                    <div class="empty-state small" id="dragging-empty">
+                        <p>No dragging issues detected.</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Signal Explorer -->
+        <section class="section" id="signal-section">
+            <div class="section-header">
+                <h2 class="section-title">Signal Explorer</h2>
+                <div class="signal-filters">
+                    <select id="signal-filter-cluster" onchange="filterSignals()">
+                        <option value="all">All Clusters</option>
+                    </select>
+                    <select id="signal-filter-direction" onchange="filterSignals()">
+                        <option value="all">All Directions</option>
+                        <option value="negative">Negative</option>
+                        <option value="positive">Positive</option>
+                        <option value="neutral">Neutral</option>
+                    </select>
+                </div>
+            </div>
+            <div class="signal-table-wrapper">
+                <table class="signal-table" id="signal-table">
+                    <thead>
+                        <tr>
+                            <th>Signal Type</th>
+                            <th>Cluster</th>
+                            <th>Strength</th>
+                            <th>Decayed</th>
+                            <th>Relevance</th>
+                            <th>Confidence</th>
+                            <th>Source</th>
+                            <th>Date</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody id="signal-tbody">
+                    </tbody>
+                </table>
+                <div class="empty-state" id="signal-empty">
+                    <p>No signals generated yet. Run the pipeline to analyze communications.</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Pipeline Modal -->
+    <div class="modal-overlay" id="pipeline-modal" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Run Dashboard Pipeline</h3>
+                <button class="modal-close" onclick="closePipelineModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="api-key-input">Gemini API Key</label>
+                    <input type="password" id="api-key-input" placeholder="Enter your Gemini API key (or set in .env)" class="input">
+                    <small class="form-hint">Leave empty to use the key from your .env file.</small>
+                </div>
+                <div class="pipeline-progress" id="pipeline-progress" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                    <p class="progress-text" id="progress-text">Initializing pipeline...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closePipelineModal()">Cancel</button>
+                <button class="btn btn-primary" id="btn-execute-pipeline" onclick="executePipeline()">
+                    <span class="btn-icon">▶</span>
+                    Execute Pipeline
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Signal Detail Modal -->
+    <div class="modal-overlay" id="signal-detail-modal" style="display: none;">
+        <div class="modal modal-wide">
+            <div class="modal-header">
+                <h3 id="signal-detail-title">Signal Details</h3>
+                <button class="modal-close" onclick="closeSignalDetail()">×</button>
+            </div>
+            <div class="modal-body" id="signal-detail-body">
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
