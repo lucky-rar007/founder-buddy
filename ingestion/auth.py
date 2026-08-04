@@ -31,12 +31,14 @@ class GraphAuthenticator:
     )
 
     def __init__(self) -> None:
-        self.token_url = self.TOKEN_URL_TEMPLATE.format(
-            tenant_id=settings.azure_tenant_id
-        )
-
         self._access_token: str | None = None
         self._expires_at: datetime | None = None
+
+    @property
+    def token_url(self) -> str:
+        return self.TOKEN_URL_TEMPLATE.format(
+            tenant_id=settings.azure_tenant_id
+        )
 
     def get_access_token(self) -> str:
         """
@@ -65,6 +67,14 @@ class GraphAuthenticator:
             return False
 
         return datetime.now(UTC) < self._expires_at
+
+    def clear_cache(self) -> None:
+        """
+        Clear cached in-memory access token and expiration timestamp.
+        Must be called when credentials are updated or reset.
+        """
+        self._access_token = None
+        self._expires_at = None
 
     def refresh_token(self) -> None:
         """
