@@ -271,6 +271,44 @@ const App = (() => {
                     </form>
                 </div>
 
+                <!-- Plan Quotas & Rate Limits Card -->
+                <div class="card" style="background: #FFFFFF !important; border: 1px solid var(--border) !important;">
+                    <fieldset style="border: none; padding: 0; margin: 0;">
+                        <legend style="background: #FFFFFF !important; border-bottom: 1px solid var(--border) !important; padding: 16px 24px; color: #0F172A !important; font-size: 16px; font-weight: 700; width: 100%; box-sizing: border-box;">
+                            Plan Quotas & Rate Limits
+                        </legend>
+                        <form id="settings-ratelimits-form" style="padding: 24px; display: flex; flex-direction: column; gap: 18px;">
+                            <p style="color: #475569 !important; font-size: 13px; margin-bottom: 4px; line-height: 1.5;">
+                                Configure custom rate limits for your Google AI Studio plan. If you are using the free/default tier, keep the current default limits intact.
+                            </p>
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+                                <div class="form-group" style="display:flex; flex-direction:column; gap:6px; margin:0;">
+                                    <label style="color: #0F172A !important; font-size: 13px; font-weight: 700;">Peak Requests / Min (RPM)</label>
+                                    <input type="number" id="settings-custom-rpm" class="form-control" style="background: #FFFFFF !important; color: #0F172A !important; border: 1px solid var(--border) !important; padding: 10px 14px; border-radius: 6px;" placeholder="15" min="1" max="10000">
+                                    <span style="color: #64748B; font-size: 11px;">Default: 15 RPM</span>
+                                </div>
+
+                                <div class="form-group" style="display:flex; flex-direction:column; gap:6px; margin:0;">
+                                    <label style="color: #0F172A !important; font-size: 13px; font-weight: 700;">Peak Tokens / Min (TPM)</label>
+                                    <input type="number" id="settings-custom-tpm" class="form-control" style="background: #FFFFFF !important; color: #0F172A !important; border: 1px solid var(--border) !important; padding: 10px 14px; border-radius: 6px;" placeholder="250000" min="1000" max="10000000">
+                                    <span style="color: #64748B; font-size: 11px;">Default: 250,000 TPM</span>
+                                </div>
+
+                                <div class="form-group" style="display:flex; flex-direction:column; gap:6px; margin:0;">
+                                    <label style="color: #0F172A !important; font-size: 13px; font-weight: 700;">Peak Requests / Day (RPD)</label>
+                                    <input type="number" id="settings-custom-rpd" class="form-control" style="background: #FFFFFF !important; color: #0F172A !important; border: 1px solid var(--border) !important; padding: 10px 14px; border-radius: 6px;" placeholder="500" min="1" max="1000000">
+                                    <span style="color: #64748B; font-size: 11px;">Default: 500 RPD</span>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary" style="align-self: flex-start; margin-top: 4px; padding: 10px 20px; font-weight: 700;">
+                                Save Rate Limits
+                            </button>
+                        </form>
+                    </fieldset>
+                </div>
+
                 <!-- Daily Sync Schedule Card -->
                 <div class="card">
                     <div class="card-header">
@@ -368,12 +406,18 @@ const App = (() => {
                 const secretStatus = document.getElementById('settings-secret-status');
                 const keyStatus = document.getElementById('settings-key-status');
                 const modelSelect = document.getElementById('settings-model-name');
+                const rpmInput = document.getElementById('settings-custom-rpm');
+                const tpmInput = document.getElementById('settings-custom-tpm');
+                const rpdInput = document.getElementById('settings-custom-rpd');
 
                 if (tenantInput) tenantInput.value = s.tenant_id || '';
                 if (clientInput) clientInput.value = s.client_id || '';
                 if (secretStatus) secretStatus.textContent = s.client_secret_masked || 'Not Configured';
                 if (keyStatus) keyStatus.textContent = s.gemini_api_key_masked || 'Not Configured';
                 if (modelSelect && s.gemini_model_name) modelSelect.value = s.gemini_model_name;
+                if (rpmInput) rpmInput.value = s.custom_rpm || 15;
+                if (tpmInput) tpmInput.value = s.custom_tpm || 250000;
+                if (rpdInput) rpdInput.value = s.custom_rpd || 500;
             }
         } catch (e) {
             console.error('Failed to load settings:', e);
@@ -407,6 +451,34 @@ const App = (() => {
                     }
                 } catch (err) {
                     showToast('Settings save error: ' + err.message, 'error');
+                }
+            };
+        }
+
+        // Rate Limits Form Submit Handler
+        const rateLimitsForm = document.getElementById('settings-ratelimits-form');
+        if (rateLimitsForm) {
+            rateLimitsForm.onsubmit = async (e) => {
+                e.preventDefault();
+                const customRpm = parseInt(document.getElementById('settings-custom-rpm').value) || 15;
+                const customTpm = parseInt(document.getElementById('settings-custom-tpm').value) || 250000;
+                const customRpd = parseInt(document.getElementById('settings-custom-rpd').value) || 500;
+
+                try {
+                    const res = await api.request('POST', '/api/onboarding/settings', {
+                        custom_rpm: customRpm,
+                        custom_tpm: customTpm,
+                        custom_rpd: customRpd
+                    });
+
+                    if (res.success) {
+                        showToast('Custom plan rate limits saved successfully!', 'success');
+                        setTimeout(() => renderSettingsView(container), 800);
+                    } else {
+                        showToast('Failed to save rate limits: ' + res.message, 'error');
+                    }
+                } catch (err) {
+                    showToast('Rate limits save error: ' + err.message, 'error');
                 }
             };
         }
