@@ -350,6 +350,9 @@ class UpdateSettingsRequest(BaseModel):
     client_secret: str | None = None
     gemini_api_key: str | None = None
     gemini_model_name: str | None = None
+    custom_rpm: int | None = None
+    custom_tpm: int | None = None
+    custom_rpd: int | None = None
 
 
 @router.get("/settings")
@@ -363,6 +366,10 @@ async def get_settings():
     client_secret = get_config("azure_client_secret") or ""
     gemini_api_key = get_config("gemini_api_key") or ""
     gemini_model = get_config("gemini_model_name") or "gemini-3.5-flash-lite"
+
+    custom_rpm = get_config("custom_rpm")
+    custom_tpm = get_config("custom_tpm")
+    custom_rpd = get_config("custom_rpd")
 
     def mask(s: str) -> str:
         if not s or len(s) < 8:
@@ -379,6 +386,9 @@ async def get_settings():
             "gemini_model_name": gemini_model,
             "has_client_secret": bool(client_secret),
             "has_gemini_key": bool(gemini_api_key),
+            "custom_rpm": int(custom_rpm) if custom_rpm else 15,
+            "custom_tpm": int(custom_tpm) if custom_tpm else 250000,
+            "custom_rpd": int(custom_rpd) if custom_rpd else 500,
         }
     }
 
@@ -402,6 +412,15 @@ async def update_settings(req: UpdateSettingsRequest):
 
     if req.gemini_model_name and req.gemini_model_name.strip():
         set_config("gemini_model_name", req.gemini_model_name.strip())
+
+    if req.custom_rpm is not None:
+        set_config("custom_rpm", str(req.custom_rpm))
+
+    if req.custom_tpm is not None:
+        set_config("custom_tpm", str(req.custom_tpm))
+
+    if req.custom_rpd is not None:
+        set_config("custom_rpd", str(req.custom_rpd))
 
     logging.info("[Settings] Configuration settings updated via Settings UI.")
     return {"success": True, "message": "Settings updated successfully."}
