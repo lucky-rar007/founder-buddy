@@ -38,23 +38,14 @@ async function refreshDashboard() {
     if (btnRefresh) btnRefresh.disabled = true;
 
     try {
-        // Fetch all data in parallel
-        const [statsRes, signalsRes, eventsRes, threadsRes, actionablesRes, draggingRes, clustersRes] = await Promise.all([
-            fetchJSON('/api/stats'),
-            fetchJSON('/api/signals'),
-            fetchJSON('/api/events'),
-            fetchJSON('/api/threads'),
-            fetchJSON('/api/actionables'),
-            fetchJSON('/api/dragging-issues'),
-            fetchJSON('/api/clusters')
-        ]);
+        // The backend exposes a single consolidated stats endpoint
+        const statsRes = await fetchJSON('/api/dashboard/stats');
 
-        if (statsRes?.success) dashboardState.stats = statsRes.stats;
-        if (signalsRes?.success) dashboardState.signals = signalsRes.signals || [];
-        if (eventsRes?.success) dashboardState.events = eventsRes.events || [];
-        if (threadsRes?.success) dashboardState.threads = threadsRes.threads || [];
-        if (actionablesRes?.success) dashboardState.actionables = actionablesRes.actionables || [];
-        if (draggingRes?.success) dashboardState.draggingIssues = draggingRes.dragging_issues || [];
+        if (statsRes?.success) {
+            dashboardState.stats = statsRes.stats || {};
+            dashboardState.actionables = statsRes.actionables || [];
+            dashboardState.draggingIssues = statsRes.dragging_issues || [];
+        }
 
         // Re-render everything
         renderStats();
@@ -344,7 +335,6 @@ function renderDraggingIssues() {
         item.innerHTML = `
             <div class="dragging-header">
                 <div class="dragging-title">${escapeHtml(issue.title || 'Unresolved Issue')}</div>
-                <span class="dragging-days">${issue.days_unresolved || 0}d</span>
             </div>
             <div class="dragging-desc">${escapeHtml(issue.description || '')}</div>
         `;

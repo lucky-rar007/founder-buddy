@@ -78,9 +78,6 @@ const DraggingIssuesView = (() => {
                                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                                         <div style="display: flex; align-items: center; gap: 8px;">
                                             <span class="sev-badge sev-${sev}">${sev}</span>
-                                            <span style="font-size: 11px; font-weight: 800; color: #EF4444; background: #FFE4E6; padding: 2px 8px; border-radius: 12px;">
-                                                ${days} Day${days > 1 ? 's' : ''} Dragging
-                                            </span>
                                         </div>
                                         <div class="card-menu-container" style="position: relative;">
                                             <button class="card-menu-btn" onclick="event.stopPropagation(); IssuesView.toggleCardMenu(event, '${issueId}')" title="Card Actions" style="background: none; border: none; font-size: 16px; font-weight: bold; color: #64748B; cursor: pointer; padding: 0 4px; line-height: 1;">&#8942;</button>

@@ -289,6 +289,36 @@ const DashboardView = (() => {
                     </div>
                 </div>
             </div>
+
+            <!-- Dragging Issues & Actionables Feed -->
+            ${(statsData && ((statsData.dragging_issues && statsData.dragging_issues.length > 0) || (statsData.actionables && statsData.actionables.length > 0))) ? `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); margin-top: var(--space-5);">
+                <!-- Dragging Issues List -->
+                <div class="card">
+                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3 class="card-title">Dragging Issues</h3>
+                        <span style="font-size: 11px; font-weight: 700; background: #FFE4E6; color: #BE123C; padding: 2px 8px; border-radius: 10px;">
+                            ${statsData.dragging_issues ? statsData.dragging_issues.length : 0} active
+                        </span>
+                    </div>
+                    <div style="padding: var(--space-2) var(--space-4) var(--space-4); display: flex; flex-direction: column; gap: 10px; max-height: 320px; overflow-y: auto;">
+                        ${buildDraggingList(statsData.dragging_issues || [])}
+                    </div>
+                </div>
+                <!-- Actionables Feed -->
+                <div class="card">
+                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3 class="card-title">Active Actionables</h3>
+                        <span style="font-size: 11px; font-weight: 700; background: #EFF6FF; color: #1D4ED8; padding: 2px 8px; border-radius: 10px;">
+                            ${statsData.actionables ? statsData.actionables.filter(a => a.status === 'open' || a.status === 'in_progress').length : 0} open
+                        </span>
+                    </div>
+                    <div style="padding: var(--space-2) var(--space-4) var(--space-4); display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto;">
+                        ${buildIssuesFeed(statsData.actionables ? statsData.actionables.filter(a => a.status === 'open' || a.status === 'in_progress') : [])}
+                    </div>
+                </div>
+            </div>
+            ` : ''}
         `;
         container.innerHTML = html;
 
@@ -398,15 +428,10 @@ const DashboardView = (() => {
         }
 
         return list.map(item => {
-            const days = item.days || item.days_unresolved || 3;
             const title = item.title || 'Unresolved bottleneck';
             const id = item.issue_id || item.id || '';
             return `
                 <div class="dragging-card" onclick="DashboardView.showDraggingModal('${id}')" title="Click to view all founder dragging issues in detail">
-                    <div class="dragging-days">
-                        <span class="dragging-days-num">${days}</span>
-                        <span class="dragging-days-lbl">Days</span>
-                    </div>
                     <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
                         <div style="display: flex; align-items: center; justify-content: space-between;">
                             <span class="font-semibold text-secondary" style="font-size: var(--text-sm);">${title}</span>
@@ -447,7 +472,6 @@ const DashboardView = (() => {
             itemsHtml = `<div style="text-align:center; padding: 40px; color: var(--text-muted);">No active dragging issues detected.</div>`;
         } else {
             itemsHtml = list.map(item => {
-                const days = item.days || item.days_unresolved || 3;
                 const sev = (item.severity || 'high').toUpperCase();
                 const category = item.category || 'Strategic Bottleneck';
                 const isFocused = focusId && (item.issue_id === focusId || item.id === focusId);
@@ -455,18 +479,12 @@ const DashboardView = (() => {
                 return `
                     <div class="card" style="margin-bottom: var(--space-4); padding: var(--space-5); border-left: 5px solid ${sev === 'CRITICAL' ? 'var(--status-critical)' : 'var(--status-high)'}; ${isFocused ? 'background: #FEF2F2; border-color: var(--status-critical);' : 'background: #FFFFFF;'}">
                         <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4);">
-                            <div style="display: flex; gap: var(--space-4); align-items: center;">
-                                <div class="dragging-days" style="width: 58px; height: 58px; flex-shrink: 0; background: ${sev === 'CRITICAL' ? '#FEE2E2' : '#FEF3C7'}; border-color: ${sev === 'CRITICAL' ? '#FCA5A5' : '#FCD34D'};">
-                                    <span class="dragging-days-num" style="color: ${sev === 'CRITICAL' ? '#DC2626' : '#D97706'};">${days}</span>
-                                    <span class="dragging-days-lbl" style="color: ${sev === 'CRITICAL' ? '#991B1B' : '#92400E'};">DAYS</span>
+                            <div>
+                                <div style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1);">
+                                    <span class="badge ${sev === 'CRITICAL' ? 'badge-critical' : 'badge-warning'}" style="font-size: 10px; font-weight: 800;">${sev} SEVERITY</span>
+                                    <span class="cluster-tag">${category}</span>
                                 </div>
-                                <div>
-                                    <div style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1);">
-                                        <span class="badge ${sev === 'CRITICAL' ? 'badge-critical' : 'badge-warning'}" style="font-size: 10px; font-weight: 800;">${sev} SEVERITY</span>
-                                        <span class="cluster-tag">${category}</span>
-                                    </div>
-                                    <h4 style="font-size: var(--text-base); font-weight: 800; color: var(--text-primary); margin: 0;">${item.title}</h4>
-                                </div>
+                                <h4 style="font-size: var(--text-base); font-weight: 800; color: var(--text-primary); margin: 0;">${item.title}</h4>
                             </div>
                         </div>
 
