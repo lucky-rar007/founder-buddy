@@ -53,7 +53,7 @@ class GraphClient:
         url = f"{settings.graph_api_base_url}{endpoint}"
 
         if params:
-            query_string = urlencode(params)
+            query_string = urlencode(params, safe="$,:")
             url = f"{url}?{query_string}"
 
         all_values = []
@@ -128,26 +128,74 @@ class GraphClient:
         return response
 
     def get_users(self) -> list[dict[str, Any]]:
-        data = self.get("/users")
-        return data.get("value", [])
+        """
+        Retrieves organization users for Outlook mail account selection.
+        """
+        try:
+            data = self.get("/users?$select=id,displayName,mail,userPrincipalName")
+            if data and "value" in data and len(data["value"]) > 0:
+                return data["value"]
+        except Exception as e:
+            logging.warning(f"[GraphClient] Select users query failed ({e}). Trying base /users...")
+
+        try:
+            data = self.get("/users")
+            return data.get("value", [])
+        except Exception as e:
+            logging.error(f"[GraphClient] Failed to fetch /users: {e}")
+            return []
 
     def get_teams(self) -> list[dict[str, Any]]:
-        endpoint = (
-            "/groups"
-            "?$filter=resourceProvisioningOptions/Any"
-            "(x:x eq 'Team')"
-        )
+        """
+        Retrieves all Microsoft Teams in the directory.
+        Tries filtered /groups first, then falls back to /groups with client-side filter.
+        Handles HTTP 403 Forbidden gracefully if Group.Read.All permission is missing.
+        """
+        # Attempt 1: Filtered OData query
+        try:
+            endpoint = "/groups?$filter=resourceProvisioningOptions/Any(x:x eq 'Team')"
+            data = self.get(endpoint)
+            if data and "value" in data:
+                return data["value"]
+        except Exception as e:
+            logging.warning(f"[GraphClient] Filtered teams query failed ({e}). Trying fallback query...")
 
-        data = self.get(endpoint)
-        return data.get("value", [])
+        # Attempt 2: Select query with client-side filter
+        try:
+            endpoint = "/groups?$select=id,displayName,resourceProvisioningOptions"
+            data = self.get(endpoint)
+            if data and "value" in data:
+                teams = []
+                for g in data["value"]:
+                    opts = g.get("resourceProvisioningOptions") or []
+                    if "Team" in opts:
+                        teams.append(g)
+                if teams:
+                    return teams
+                return data["value"]
+        except Exception as e:
+            logging.warning(f"[GraphClient] Select groups query failed ({e}). Trying base /groups...")
+
+        # Attempt 3: Base /groups query
+        try:
+            data = self.get("/groups")
+            return data.get("value", [])
+        except Exception as e:
+            logging.error(f"[GraphClient] All teams/groups queries failed: {e}")
+            if "403" in str(e) or "Forbidden" in str(e):
+                logging.warning("[GraphClient] 403 Forbidden on /groups. Ensure 'Group.Read.All' or 'Team.ReadBasic.All' permission is granted in Azure AD.")
+                return []
+            raise
 
     def get_channels(self, team_id: str) -> list[dict[str, Any]]:
-        data = self.get(f"/teams/{team_id}/channels")
+        from urllib.parse import quote
+        data = self.get(f"/teams/{quote(team_id, safe='')}/channels")
         return data.get("value", [])
 
     def get_messages(self, team_id: str, channel_id: str) -> list[dict[str, Any]]:
+        from urllib.parse import quote
         data = self.get(
-            f"/teams/{team_id}/channels/{channel_id}/messages"
+            f"/teams/{quote(team_id, safe='')}/channels/{quote(channel_id, safe='')}/messages"
         )
         return data.get("value", [])
 
@@ -157,10 +205,11 @@ class GraphClient:
         channel_id: str,
         message_id: str,
     ) -> list[dict[str, Any]]:
+        from urllib.parse import quote
         data = self.get(
-            f"/teams/{team_id}/channels/"
-            f"{channel_id}/messages/"
-            f"{message_id}/replies"
+            f"/teams/{quote(team_id, safe='')}/channels/"
+            f"{quote(channel_id, safe='')}/messages/"
+            f"{quote(message_id, safe='')}/replies"
         )
         return data.get("value", [])
 
