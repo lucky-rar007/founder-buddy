@@ -34,7 +34,6 @@ if str(workspace_root) not in sys.path:
 try:
     from shared.settings import settings
     from ingestion.auth import authenticator
-    from ingestion.selector_cli import SelectorCLI
     from ingestion.graph_client import graph_client
 except ImportError as e:
     logging.error("Failed to import modules from local shared or ingestion packages. "
@@ -76,7 +75,7 @@ class IngestionGraphClient:
             url_parts = list(urlparse(current_url))
             query = dict(parse_qsl(url_parts[4]))
             query.update(params)
-            url_parts[4] = urlencode(query)
+            url_parts[4] = urlencode(query, safe="$,:")
             current_url = urlunparse(url_parts)
 
         while current_url:
@@ -422,6 +421,49 @@ def save_outlook_messages(messages: list[dict], user_id: str):
         file_path.write_text(json.dumps(msgs, indent=2, ensure_ascii=False), encoding="utf-8")
         logging.info(f"Saved {len(msgs)} Outlook emails to {file_path}")
 
+    # Enforce 30-day raw message retention cleanup
+    purge_old_raw_messages(retention_days=30)
+
+
+def purge_old_raw_messages(retention_days: int = 30) -> int:
+    """
+    Purges raw Teams and Outlook message directories older than retention_days (default 30 days).
+    Keeps raw message storage clean while preserving 30 days of raw history.
+    """
+    import shutil
+    from datetime import datetime, timedelta
+
+    cutoff_date = datetime.now() - timedelta(days=retention_days)
+    purged_count = 0
+
+    data_dir = Path(__file__).resolve().parent.parent / "data"
+    raw_dirs = [
+        data_dir / "raw_teams_messages",
+        data_dir / "raw_outlook_messages"
+    ]
+
+    for base_dir in raw_dirs:
+        if not base_dir.exists():
+            continue
+
+        for date_dir in base_dir.iterdir():
+            if not date_dir.is_dir():
+                continue
+
+            try:
+                dir_date = datetime.strptime(date_dir.name, "%Y-%m-%d")
+                if dir_date < cutoff_date:
+                    logging.info(f"[Retention Policy] Purging raw message folder older than {retention_days} days: {date_dir}")
+                    shutil.rmtree(date_dir)
+                    purged_count += 1
+            except ValueError:
+                # Folder name is not YYYY-MM-DD format, skip
+                continue
+            except Exception as e:
+                logging.error(f"[Retention Policy Error] Failed to purge {date_dir}: {e}")
+
+    return purged_count
+
 
 # ─────────────────────────────────────────────────────────────────────
 # RUN IMPLEMENTATION FLOWS
@@ -456,34 +498,19 @@ def run_manual():
             except ValueError:
                 print("Invalid date format. Use YYYY-MM-DD.")
 
-    selector = SelectorCLI()
+    logging.info("Starting ingestion (all sources)...")
     if source_choice == "0":
-        team_id = selector.select_team()
-        if team_id == "all":
-            channel_id = "all"
-        else:
-            channel_id = selector.select_channel(team_id)
-        ingest_teams(team_id, channel_id, cutoff_date)
+        ingest_teams("all", "all", cutoff_date)
     else:
-        user_id, _ = selector.select_user()
-        ingest_outlook(user_id, cutoff_date)
+        ingest_outlook("me", cutoff_date)
 
     logging.info("Manual ingestion completed successfully.")
 
 
 def configure_schedule():
     logging.info("=== CONFIGURE SCHEDULER ===")
-    selector = SelectorCLI()
-    
-    print("\nConfigure Teams source for scheduling:")
-    team_id = selector.select_team()
-    if team_id == "all":
-        channel_id = "all"
-    else:
-        channel_id = selector.select_channel(team_id)
-
-    print("\nConfigure Outlook user for scheduling:")
-    user_id, _ = selector.select_user()
+    logging.info("Schedule configuration is managed via the Web Dashboard at http://localhost:8080/")
+    team_id, channel_id, user_id = "all", "all", "me"
 
     config_data = {
         "teams": {
