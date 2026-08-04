@@ -1,0 +1,317 @@
+/* ═══════════════════════════════════════════════════════════════
+   INGESTION — Corporate Trust Date Selection & Live Sync UI
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Date Range Grid ───────────────────────────────────────── */
+
+.range-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-5);
+    margin-bottom: var(--space-8);
+}
+
+@media (min-width: 520px) {
+    .range-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.range-card {
+    background: var(--card);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-xl);
+    padding: var(--space-6);
+    cursor: pointer;
+    transition: transform 0.3s var(--ease-spring),
+                box-shadow 0.3s ease,
+                border-color 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+
+.range-card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 3px;
+    background: var(--accent-gradient-h);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 0.4s var(--ease-out-expo);
+    pointer-events: none;
+}
+
+.range-card:hover {
+    border-color: var(--accent-border);
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg), var(--shadow-accent);
+}
+
+.range-card:hover::after {
+    transform: scaleX(1);
+}
+
+.range-card.active {
+    border-color: var(--accent);
+    background: var(--accent-light);
+    box-shadow: var(--shadow-accent);
+}
+
+.range-card-title {
+    font-size: var(--text-lg);
+    font-weight: 700;
+    color: var(--foreground);
+    letter-spacing: -0.02em;
+}
+
+.range-card-desc {
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+    line-height: 1.45;
+}
+
+.range-card-radio {
+    position: absolute;
+    top: var(--space-6);
+    right: var(--space-6);
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid var(--border-strong);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+}
+
+.range-card.active .range-card-radio {
+    border-color: var(--primary);
+    background: var(--primary);
+}
+
+.range-card.active .range-card-radio::after {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #FFFFFF;
+}
+
+/* ─── Channel / Tree Exclusions ─────────────────────────────── */
+
+.tree-container {
+    background: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    padding: var(--space-5);
+    max-height: 420px;
+    overflow-y: auto;
+    margin-bottom: var(--space-6);
+}
+
+.tree-node-team {
+    margin-bottom: var(--space-4);
+}
+
+.tree-team-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--border);
+    font-weight: 700;
+    font-size: var(--text-base);
+    color: var(--foreground);
+}
+
+.tree-chevron {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: transform var(--transition-fast);
+}
+
+.tree-chevron.collapsed {
+    transform: rotate(-90deg);
+}
+
+.tree-channels-list {
+    padding-left: var(--space-8);
+    margin-top: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.tree-channels-list.collapsed {
+    display: none;
+}
+
+.tree-node-channel {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.tree-checkbox-label {
+    font-size: var(--text-base);
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    font-weight: 500;
+}
+
+.tree-checkbox-label:hover {
+    color: var(--text-primary);
+}
+
+/* Custom Checkbox */
+.custom-chk {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid var(--border-strong);
+    border-radius: 5px;
+    background: var(--card);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+    flex-shrink: 0;
+}
+
+.custom-chk:checked {
+    background: var(--accent-gradient-h);
+    border-color: var(--accent);
+}
+
+.custom-chk:checked::after {
+    content: '';
+    width: 4px;
+    height: 8px;
+    border: solid #FFFFFF;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg) translate(-1px, -1px);
+    display: block;
+}
+
+/* ─── Ingestion Progress Screen ─────────────────────────────── */
+
+.sync-container {
+    text-align: center;
+    padding: var(--space-8) 0;
+}
+
+.sync-large-percent {
+    font-family: var(--font-sans);
+    font-size: var(--text-3xl);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--foreground);
+    margin-bottom: var(--space-3);
+    line-height: 1.25;
+    transition: all 0.3s ease;
+}
+
+.sync-large-percent.ai-stage {
+    font-size: var(--text-2xl);
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.015em;
+}
+
+.progress-track {
+    width: 100%;
+    height: 12px;
+    background: #E2E8F0;
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    margin: var(--space-8) 0;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent-gradient);
+    border-radius: var(--radius-full);
+    transition: width 0.3s ease-out;
+    box-shadow: 0 0 16px rgba(79, 70, 229, 0.4);
+}
+
+.sync-status-details {
+    display: flex;
+    justify-content: space-between;
+    font-size: var(--text-base);
+    color: var(--text-secondary);
+    font-weight: 600;
+    margin-bottom: var(--space-8);
+}
+
+/* Live Logger Panel */
+.sync-logger {
+    background: #0F172A; /* Dark slate terminal console for contrast */
+    color: #F8FAFC;
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+    height: 180px;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-bottom: var(--space-8);
+    box-shadow: var(--shadow-md);
+}
+
+.log-entry.info { color: #94A3B8; }
+.log-entry.success { color: #34D399; }
+.log-entry.error { color: #F87171; }
+.log-entry.source { color: #818CF8; font-weight: 600; }
+
+/* ─── Auto-Suggest Dropdown Styling ───────────────────────────── */
+.autosuggest-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    max-height: 220px;
+    overflow-y: auto;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+    z-index: 1000;
+}
+
+.autosuggest-item {
+    padding: var(--space-3) var(--space-4);
+    cursor: pointer;
+    font-size: var(--text-sm);
+    color: var(--foreground);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border-subtle);
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.autosuggest-item:hover, .autosuggest-item.active {
+    background: var(--accent-light);
+    color: var(--accent);
+}
+
+.autosuggest-item:last-child {
+    border-bottom: none;
+}
