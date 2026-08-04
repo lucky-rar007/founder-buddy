@@ -147,11 +147,11 @@ def _is_quota_exhausted(model_id: str) -> bool:
     Checks if the daily RPD quota for a model has been reached.
     Returns False for models with rpd == 0 (treated as unlimited).
     """
-    spec = MODEL_CATALOGUE.get(model_id)
-    if not spec or spec.rpd == 0:
+    rpd = router.get_effective_rpd(model_id)
+    if rpd == 0:
         return False
     count = _get_daily_count(model_id)
-    return count >= spec.rpd
+    return count >= rpd
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -165,24 +165,59 @@ class ModelRouter:
     models in a task's fallback chain are exhausted.
     """
 
+    def get_effective_rpm(self, model_id: str) -> int:
+        """Returns custom configured RPM if set in app_config, else model default."""
+        try:
+            from shared.database import get_config
+            custom = get_config("custom_rpm")
+            if custom and int(custom) > 0:
+                return int(custom)
+        except Exception:
+            pass
+        spec = MODEL_CATALOGUE.get(model_id)
+        return spec.rpm if spec else 15
+
+    def get_effective_tpm(self, model_id: str) -> int:
+        """Returns custom configured TPM if set in app_config, else model default."""
+        try:
+            from shared.database import get_config
+            custom = get_config("custom_tpm")
+            if custom and int(custom) > 0:
+                return int(custom)
+        except Exception:
+            pass
+        spec = MODEL_CATALOGUE.get(model_id)
+        return spec.tpm if spec else 250_000
+
+    def get_effective_rpd(self, model_id: str) -> int:
+        """Returns custom configured RPD if set in app_config, else model default."""
+        try:
+            from shared.database import get_config
+            custom = get_config("custom_rpd")
+            if custom and int(custom) > 0:
+                return int(custom)
+        except Exception:
+            pass
+        spec = MODEL_CATALOGUE.get(model_id)
+        return spec.rpd if spec else 500
+
     def is_daily_quota_exhausted(self, model_id: str) -> bool:
         """Returns True if model_id has reached its daily RPD limit."""
         return _is_quota_exhausted(model_id)
 
     def get_daily_limit(self, model_id: str) -> int:
         """Returns daily RPD limit for model_id."""
-        spec = MODEL_CATALOGUE.get(model_id)
-        return spec.rpd if spec else 0
+        return self.get_effective_rpd(model_id)
 
     def get_min_spacing(self, model_id: str) -> float:
         """
         Calculates per-model minimum seconds between consecutive requests based on its
-        configured RPM (Requests Per Minute) in MODEL_CATALOGUE.
+        configured RPM (Requests Per Minute).
         """
-        spec = MODEL_CATALOGUE.get(model_id)
-        if not spec or spec.rpm <= 0:
+        rpm = self.get_effective_rpm(model_id)
+        if rpm <= 0:
             return 2.0
-        return round((60.0 / spec.rpm) + 0.1, 2)
+        return round((60.0 / rpm) + 0.1, 2)
 
     def select_model(
         self,
@@ -251,11 +286,12 @@ class ModelRouter:
         result = {}
         for model_id, spec in MODEL_CATALOGUE.items():
             count = _get_daily_count(model_id)
+            effective_rpd = self.get_effective_rpd(model_id)
             result[model_id] = {
                 "display_name": spec.display_name,
                 "used_today": count,
-                "daily_limit": spec.rpd,
-                "remaining": max(0, spec.rpd - count) if spec.rpd > 0 else "unlimited",
+                "daily_limit": effective_rpd,
+                "remaining": max(0, effective_rpd - count) if effective_rpd > 0 else "unlimited",
                 "exhausted": _is_quota_exhausted(model_id)
             }
         return result
