@@ -182,7 +182,7 @@ async def get_dashboard_stats(limit: int = 100):
 async def trigger_pipeline(background_tasks: BackgroundTasks):
     """
     Explicitly trigger event extraction and signal clustering pipeline
-    to process any newly ingested Teams or Outlook logs.
+    to process any newly ingested Teams or Outlook logs via agent_tasks queue.
     """
     api_key = get_config("gemini_api_key")
     if not api_key:
@@ -204,18 +204,14 @@ async def trigger_pipeline(background_tasks: BackgroundTasks):
             "run_id": active_run[0]
         }
 
-    # Run pipeline in background task to avoid blocking HTTP worker
-    _pipeline_result_store = {}
+    from shared.task_queue import enqueue_task
+    task_id = enqueue_task("extract_signals", {"reason": "manual_trigger"}, lane="analytics", priority=200)
 
-    def execute_pipeline():
-        try:
-            result = run_full_pipeline(api_key=api_key, run_type="manual")
-            _pipeline_result_store["last"] = result
-        except Exception as e:
-            logging.error(f"[API Background Task] Pipeline failed: {e}")
-
-    background_tasks.add_task(execute_pipeline)
-    return {"success": True, "message": "Pipeline run triggered in the background."}
+    return {
+        "success": True,
+        "message": f"Pipeline run enqueued (task_id: {task_id}). Worker poked for instant execution.",
+        "task_id": task_id
+    }
 
 
 @router.get("/pipeline/savepoint")
