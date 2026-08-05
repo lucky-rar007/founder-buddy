@@ -254,7 +254,27 @@ CREATE TABLE IF NOT EXISTS dragging_issues (
     severity          TEXT,
     first_detected_at TEXT,
     last_checked_at   TEXT,
+    recheck_after     TEXT,
+    recheck_reason    TEXT,
     status            TEXT DEFAULT 'active'
+);
+
+-- ═══════════════════════════════════════════════════════
+-- AGENT TASKS QUEUE (Asynchronous Task Dispatching)
+-- ═══════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS agent_tasks (
+    task_id          TEXT PRIMARY KEY,
+    kind             TEXT NOT NULL,
+    lane             TEXT DEFAULT 'analytics',
+    payload_json     TEXT NOT NULL,
+    priority         INTEGER DEFAULT 100,
+    status           TEXT DEFAULT 'pending',
+    attempts         INTEGER DEFAULT 0,
+    error_message    TEXT,
+    lease_expires_at TEXT,
+    created_at       TEXT DEFAULT (datetime('now')),
+    updated_at       TEXT DEFAULT (datetime('now'))
 );
 
 -- ═══════════════════════════════════════════════════════
@@ -341,6 +361,7 @@ CREATE INDEX IF NOT EXISTS idx_events_signal_type ON events(signal_type);
 CREATE INDEX IF NOT EXISTS idx_actionables_status ON actionables(status);
 CREATE INDEX IF NOT EXISTS idx_dragging_issues_status ON dragging_issues(status);
 CREATE INDEX IF NOT EXISTS idx_summaries_type ON summaries(summary_type);
+CREATE INDEX IF NOT EXISTS idx_agent_tasks_status ON agent_tasks(status, lane, priority DESC);
 """
 
 # ─────────────────────────────────────────────────────────────────────
