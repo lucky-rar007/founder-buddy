@@ -378,14 +378,15 @@ def add_dragging_issue(issue):
             conn.execute("PRAGMA foreign_keys=OFF")
             conn.execute(
                 """INSERT OR REPLACE INTO dragging_issues
-                (issue_id, thread_id, signal_id, title, description, days_unresolved, severity, first_detected_at, last_checked_at, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (issue_id, thread_id, signal_id, title, description, days_unresolved, severity, first_detected_at, last_checked_at, recheck_after, recheck_reason, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     issue.get("issue_id"), issue.get("thread_id"),
                     issue.get("signal_id"), issue.get("title"),
                     issue.get("description"), issue.get("days_unresolved"),
                     issue.get("severity"), issue.get("first_detected_at"),
-                    issue.get("last_checked_at"), issue.get("status", "active")
+                    issue.get("last_checked_at"), issue.get("recheck_after"),
+                    issue.get("recheck_reason"), issue.get("status", "active")
                 )
             )
             conn.execute("PRAGMA foreign_keys=ON")
@@ -399,7 +400,7 @@ def get_dragging_issues():
         with get_db() as conn:
             rows = conn.execute(
                 """SELECT issue_id, thread_id, signal_id, title, description,
-                          days_unresolved, severity, first_detected_at, last_checked_at, status
+                          days_unresolved, severity, first_detected_at, last_checked_at, recheck_after, recheck_reason, status
                    FROM dragging_issues WHERE status = 'active'"""
             ).fetchall()
             return [dict(r) for r in rows]
