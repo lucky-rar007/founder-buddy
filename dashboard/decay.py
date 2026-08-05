@@ -170,7 +170,14 @@ def detect_dragging_issues(
         "morale_issue", "budget_concern", "security_concern"
     }
 
+    now_iso = datetime.now().isoformat()
+
     for sig in signals:
+        # Respect self-scheduled recheck_after window
+        recheck_after = sig.get("recheck_after")
+        if recheck_after and recheck_after > now_iso:
+            continue
+
         # Strictly require negative direction OR explicit risk signal type
         direction = sig.get("direction", "neutral")
         sig_type = sig.get("signal_type", "").strip().lower()
@@ -208,7 +215,9 @@ def detect_dragging_issues(
                 "current_strength": decayed,
                 "severity": severity,
                 "summary": sig.get("event_summary", "") or sig.get("summary", ""),
-                "timestamp": timestamp_str
+                "timestamp": timestamp_str,
+                "recheck_after": sig.get("recheck_after"),
+                "recheck_reason": sig.get("recheck_reason")
             })
 
     # Sort by severity (critical first), then by days unresolved
