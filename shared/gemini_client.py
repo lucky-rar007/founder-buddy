@@ -17,14 +17,138 @@ import os
 import time
 import random
 import logging
-import requests
+import asyncio
 import json
+import httpx
+import requests
 
 from shared.model_router import router, QuotaExhaustedError
 
 logger = logging.getLogger(__name__)
 
 _last_request_times: dict[str, float] = {}
+
+
+async def query_gemini_api_async(
+    prompt: str,
+    model_name: str | None = None,
+    api_key: str | None = None,
+    task_type: str = "general",
+    estimated_tokens: int = 0,
+    run_id: str = "",
+    batch_index: int = 0
+) -> str:
+    """
+    Non-blocking async client for Gemini REST API using httpx.AsyncClient (P-1).
+    """
+    if not api_key:
+        api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        try:
+            from shared.database import get_config
+            api_key = get_config("gemini_api_key")
+        except Exception:
+            pass
+
+    if not api_key:
+        raise ValueError("Gemini API Key is missing. Set GEMINI_API_KEY or configure it in Settings.")
+
+    if not model_name:
+        model_name = router.select_model(
+            task_type=task_type,
+            estimated_tokens=estimated_tokens,
+            run_id=run_id,
+            batch_index=batch_index
+        )
+
+    min_spacing = router.get_min_spacing(model_name)
+    last_time = _last_request_times.get(model_name, 0.0)
+    elapsed = time.time() - last_time
+    if elapsed < min_spacing:
+        sleep_time = min_spacing - elapsed + random.uniform(0.1, 0.4)
+        logger.info(f"[GeminiClient] Async rate-limit throttle for '{model_name}'. Sleeping {sleep_time:.2f}s...")
+        await asyncio.sleep(sleep_time)
+
+    mime_type = "text/plain" if task_type in ("rag_query", "general_text") else "application/json"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "responseMimeType": mime_type,
+            "temperature": 0.1
+        }
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": api_key
+    }
+
+    max_retries = 5
+    base_backoff = 3.0
+
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        for attempt in range(1, max_retries + 1):
+            _last_request_times[model_name] = time.time()
+            try:
+                response = await client.post(url, headers=headers, json=payload)
+
+                if response.status_code in (429, 503):
+                    if router.is_daily_quota_exhausted(model_name):
+                        logging.error(
+                            f"[GeminiClient] Daily RPD quota ({router.get_daily_limit(model_name)}) "
+                            f"exhausted for model '{model_name}'. Raising QuotaExhaustedError."
+                        )
+                        raise QuotaExhaustedError(
+                            model=model_name,
+                            task_type=task_type,
+                            run_id=run_id,
+                            batch_index=batch_index
+                        )
+
+                    backoff = (base_backoff ** attempt) + random.uniform(1.0, 3.0)
+                    logger.warning(
+                        f"[GeminiClient] Async HTTP 429 for '{model_name}' (Attempt {attempt}/{max_retries}). "
+                        f"Retrying in {backoff:.1f}s..."
+                    )
+                    await asyncio.sleep(backoff)
+                    continue
+
+                if response.status_code == 404:
+                    logger.warning(
+                        f"[GeminiClient] Model '{model_name}' returned HTTP 404 from Google API."
+                    )
+                    raise QuotaExhaustedError(
+                        model=model_name,
+                        task_type=task_type,
+                        run_id=run_id,
+                        batch_index=batch_index
+                    )
+
+                if response.status_code != 200:
+                    raise Exception(
+                        f"Gemini API returned error status {response.status_code}: {response.text}"
+                    )
+
+                res_data = response.json()
+                content_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+                router.record_request(model_name)
+                return content_text
+
+            except QuotaExhaustedError:
+                raise
+            except (httpx.HTTPError, KeyError, IndexError) as e:
+                if attempt == max_retries:
+                    raise Exception(
+                        f"Failed to query Gemini API async after {max_retries} attempts: {str(e)}"
+                    )
+                backoff = (base_backoff ** attempt) + random.uniform(0.5, 1.5)
+                logger.warning(
+                    f"[GeminiClient] Async error on attempt {attempt}/{max_retries}: {str(e)}. "
+                    f"Retrying in {backoff:.2f}s..."
+                )
+                await asyncio.sleep(backoff)
+
+    raise Exception("Failed to query Gemini API async after maximum retries.")
 
 
 def query_gemini_api(
