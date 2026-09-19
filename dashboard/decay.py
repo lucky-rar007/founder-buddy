@@ -16,7 +16,7 @@ import math
 from datetime import datetime
 import logging
 
-logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────────────
 # DEFAULT CLUSTER DECAY PARAMETERS
@@ -34,6 +34,13 @@ CLUSTER_DECAY_MAPPING = {
 # Dragging issue thresholds
 DRAGGING_DAYS_THRESHOLD = 3      # Minimum days for an issue to be "dragging"
 DRAGGING_STRENGTH_THRESHOLD = 0.3  # Minimum decayed strength to still be concerning
+
+# Dragging issue severity classification thresholds (C-5)
+SEVERITY_CRITICAL_DAYS = 7
+SEVERITY_CRITICAL_STRENGTH = 0.6
+SEVERITY_HIGH_DAYS = 5
+SEVERITY_HIGH_STRENGTH = 0.5
+SEVERITY_MEDIUM_DAYS = 3
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -194,12 +201,12 @@ def detect_dragging_issues(
 
         # Dragging issues are strictly unresolved problems that have persisted across multiple days (>= days_threshold)
         if days_elapsed >= days_threshold and decayed >= strength_threshold:
-            # Classify severity based on true days unresolved
-            if days_elapsed >= 7 and decayed >= 0.6:
+            # Classify severity based on true days unresolved (C-5)
+            if days_elapsed >= SEVERITY_CRITICAL_DAYS and decayed >= SEVERITY_CRITICAL_STRENGTH:
                 severity = "critical"
-            elif days_elapsed >= 5 or decayed >= 0.5:
+            elif days_elapsed >= SEVERITY_HIGH_DAYS or decayed >= SEVERITY_HIGH_STRENGTH:
                 severity = "high"
-            elif days_elapsed >= 3:
+            elif days_elapsed >= SEVERITY_MEDIUM_DAYS:
                 severity = "medium"
             else:
                 severity = "low"
