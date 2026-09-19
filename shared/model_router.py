@@ -112,33 +112,49 @@ TASK_ROUTING: dict[str, list[str]] = {
 # DAILY COUNTER HELPERS (backed by SQLite config table)
 # ─────────────────────────────────────────────────────────────────────
 
-def _today_key(model_id: str) -> str:
-    """Returns config key for today's request counter for a given model."""
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    return f"quota_count_{model_id}_{today}"
-
-
 def _get_daily_count(model_id: str) -> int:
-    """Reads today's request count from the SQLite config table."""
+    """Reads today's request count from the dedicated model_quota_counters table."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     try:
-        from shared.database import get_config
-        raw = get_config(_today_key(model_id))
-        return int(raw) if raw else 0
+        from shared.database import get_db_read
+        with get_db_read() as conn:
+            row = conn.execute(
+                "SELECT request_count FROM model_quota_counters WHERE date = ? AND model_id = ?",
+                (today, model_id)
+            ).fetchone()
+            if row:
+                return int(row[0])
     except Exception:
-        return 0
+        # Fallback to app_config for backwards compatibility
+        try:
+            from shared.database import get_config
+            raw = get_config(f"quota_count_{model_id}_{today}")
+            return int(raw) if raw else 0
+        except Exception:
+            return 0
+    return 0
 
 
 def _increment_daily_count(model_id: str) -> int:
-    """Atomically increments and persists today's request count. Returns new count."""
+    """Atomically increments and persists today's request count in model_quota_counters."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     try:
-        from shared.database import set_config, get_config
-        key = _today_key(model_id)
-        current = int(get_config(key) or 0)
-        new_count = current + 1
-        set_config(key, str(new_count))
-        return new_count
+        from shared.database import get_db_write
+        with get_db_write() as conn:
+            conn.execute("""
+                INSERT INTO model_quota_counters (date, model_id, request_count, updated_at)
+                VALUES (?, ?, 1, datetime('now'))
+                ON CONFLICT(date, model_id) DO UPDATE SET
+                    request_count = request_count + 1,
+                    updated_at = datetime('now')
+            """, (today, model_id))
+            row = conn.execute(
+                "SELECT request_count FROM model_quota_counters WHERE date = ? AND model_id = ?",
+                (today, model_id)
+            ).fetchone()
+            return int(row[0]) if row else 1
     except Exception as e:
-        logging.warning(f"[ModelRouter] Failed to update daily counter for {model_id}: {e}")
+        logging.warning(f"[ModelRouter] Failed to update daily counter in table for {model_id}: {e}")
         return 0
 
 
