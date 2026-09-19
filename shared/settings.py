@@ -84,104 +84,56 @@ class Settings:
     with zero dependence on .env files.
     """
 
-    @property
-    def azure_tenant_id(self) -> str:
+    def _get_setting(self, key: str, env_fallback: str | None = None, default: str = "") -> str:
+        """Generic helper to fetch a config key with environment variable and default fallback."""
         try:
             from shared.database import get_config
-            val = get_config("azure_tenant_id")
-            if val:
+            val = get_config(key)
+            if val is not None and val != "":
                 return val
         except Exception:
             pass
-        return os.getenv("AZURE_TENANT_ID", "")
+        if env_fallback:
+            env_val = os.getenv(env_fallback)
+            if env_val:
+                return env_val
+        return default
+
+    @property
+    def azure_tenant_id(self) -> str:
+        return self._get_setting("azure_tenant_id", "AZURE_TENANT_ID", "")
 
     @property
     def azure_client_id(self) -> str:
-        try:
-            from shared.database import get_config
-            val = get_config("azure_client_id")
-            if val:
-                return val
-        except Exception:
-            pass
-        return os.getenv("AZURE_CLIENT_ID", "")
+        return self._get_setting("azure_client_id", "AZURE_CLIENT_ID", "")
 
     @property
     def azure_client_secret(self) -> str:
-        try:
-            from shared.database import get_config
-            val = get_config("azure_client_secret")
-            if val:
-                return val
-        except Exception:
-            pass
-        return os.getenv("AZURE_CLIENT_SECRET", "")
+        return self._get_setting("azure_client_secret", "AZURE_CLIENT_SECRET", "")
 
     @property
     def graph_api_base_url(self) -> str:
-        try:
-            from shared.database import get_config
-            val = get_config("graph_api_base_url")
-            if val:
-                return val
-        except Exception:
-            pass
-        return "https://graph.microsoft.com/v1.0"
+        return self._get_setting("graph_api_base_url", "GRAPH_API_BASE_URL", "https://graph.microsoft.com/v1.0")
 
     @property
     def graph_scope(self) -> str:
-        try:
-            from shared.database import get_config
-            val = get_config("graph_scope")
-            if val:
-                return val
-        except Exception:
-            pass
-        return "https://graph.microsoft.com/.default"
+        return self._get_setting("graph_scope", "GRAPH_SCOPE", "https://graph.microsoft.com/.default")
 
     @property
     def data_dir(self) -> str:
-        try:
-            from shared.database import get_config
-            val = get_config("data_dir")
-            if val:
-                return val
-        except Exception:
-            pass
-        return "data"
+        return self._get_setting("data_dir", "DATA_DIR", "data")
 
     @property
     def log_level(self) -> str:
-        try:
-            from shared.database import get_config
-            val = get_config("log_level")
-            if val:
-                return val
-        except Exception:
-            pass
-        return "INFO"
+        return self._get_setting("log_level", "LOG_LEVEL", "INFO")
 
     @property
     def gemini_api_key(self) -> str:
-        try:
-            from shared.database import get_config
-            val = get_config("gemini_api_key")
-            if val:
-                return val
-        except Exception:
-            pass
-        return os.getenv("GEMINI_API_KEY", "")
+        return self._get_setting("gemini_api_key", "GEMINI_API_KEY", "")
 
     @property
     def gemini_model_name(self) -> str:
-        try:
-            from shared.database import get_config
-            val = get_config("gemini_model_name")
-            if val:
-                return val
-        except Exception:
-            pass
-        return "gemini-3.5-flash-lite"
+        return self._get_setting("gemini_model_name", "GEMINI_MODEL_NAME", "gemini-3.5-flash-lite")
 
     @classmethod
     def load(cls) -> "Settings":
@@ -192,4 +144,26 @@ class Settings:
         return cls()
 
 
-settings = Settings.load()
+class _LazySettings:
+    """Lazy proxy that defers Settings loading until first attribute access (A-2)."""
+
+    def __init__(self):
+        self._target: Settings | None = None
+
+    def _get_target(self) -> Settings:
+        if self._target is None:
+            self._target = Settings.load()
+        return self._target
+
+    def __getattr__(self, name: str):
+        return getattr(self._get_target(), name)
+
+    def reload(self) -> Settings:
+        """Force re-loading of settings."""
+        self._target = Settings.load()
+        return self._target
+
+
+# Lazy-loaded singleton instance
+settings = _LazySettings()
+
