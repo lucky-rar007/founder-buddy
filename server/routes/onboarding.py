@@ -20,7 +20,7 @@ from pydantic import BaseModel, field_validator
 
 from shared.database import get_config, set_config, is_onboarded, get_db
 
-logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -428,26 +428,43 @@ async def update_settings(req: UpdateSettingsRequest):
 
 class SystemResetRequest(BaseModel):
     confirmation: str
+    verify_key_suffix: str | None = None
 
 
 @router.post("/system/reset")
 async def system_reset(req: SystemResetRequest):
     """
     Permanently wipes all credentials, databases, vector stores, and cached state.
-    Requires payload: {"confirmation": "YES"}
+    Requires payload: {"confirmation": "YES"} or {"confirmation": "RESET_ALL_DATA_CONFIRMED"}.
+    If a Gemini API key is configured, requires verify_key_suffix matching the last 4 characters of the key (S-7).
     """
-    if not req.confirmation or req.confirmation.strip().upper() != "YES":
+    conf = req.confirmation.strip().upper() if req.confirmation else ""
+    if conf not in ("YES", "RESET_ALL_DATA_CONFIRMED"):
         raise HTTPException(
             status_code=400,
-            detail="Confirmation string 'YES' is required to perform a system reset."
+            detail="Confirmation string 'YES' or 'RESET_ALL_DATA_CONFIRMED' is required to perform a system reset."
         )
+
+    # Secondary confirmation: if a Gemini key is configured and confirmation isn't explicit long form
+    if conf != "RESET_ALL_DATA_CONFIRMED":
+        stored_key = get_config("gemini_api_key")
+        if stored_key and len(stored_key) >= 4:
+            expected_suffix = stored_key[-4:]
+            if not req.verify_key_suffix or req.verify_key_suffix != expected_suffix:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Safety verification failed: System reset requires either 'verify_key_suffix' "
+                        "matching the last 4 characters of the Gemini API key, or confirmation='RESET_ALL_DATA_CONFIRMED'."
+                    )
+                )
 
     try:
         from main import wipe_all_data
         from dashboard.db import init_db
         from ingestion.auth import authenticator
 
-        logging.info("[System Reset] Full clean slate reset requested by user.")
+        logger.info("[System Reset] Full clean slate reset requested and verified.")
         wipe_all_data()
         init_db()
         authenticator.clear_cache()
@@ -457,6 +474,6 @@ async def system_reset(req: SystemResetRequest):
             "message": "System reset completed successfully. All data wiped."
         }
     except Exception as e:
-        logging.error(f"[System Reset] Failed to wipe data: {e}")
+        logger.error(f"[System Reset] Failed to wipe data: {e}")
         raise HTTPException(status_code=500, detail=f"System reset failed: {str(e)}")
 
