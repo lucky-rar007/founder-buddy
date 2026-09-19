@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import json
+import re
 from shared.database import get_config, fts_search
 from rag.embedder import GeminiEmbedder
 from rag.vectorstore import ChromaVectorStore
@@ -17,7 +18,7 @@ from shared.gemini_client import query_gemini_api
 
 from typing import Any
 
-logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 
 class RAGPipeline:
@@ -30,10 +31,29 @@ class RAGPipeline:
         self.embedder = GeminiEmbedder(api_key=self.api_key)
         self.vector_store = ChromaVectorStore()
 
+    def _is_simple_query(self, question: str) -> bool:
+        """Determines if a query is simple enough to skip the LLM parsing step (P-4)."""
+        words = question.strip().split()
+        if len(words) <= 5:
+            return True
+        filler_prefixes = ("hey", "hello", "hi", "can you", "could you", "please", "find me", "tell me")
+        lower_q = question.lower().strip()
+        if not any(lower_q.startswith(p) for p in filler_prefixes) and len(words) <= 8:
+            return True
+        return False
+
     def _parse_query_intent(self, question: str) -> dict[str, str]:
         """
         Self-Querying Parser: Deconstructs user prompt into FTS5 keywords and semantic vector text.
+        Fast-paths simple queries without an LLM call to reduce latency and quota consumption (P-4).
         """
+        if self._is_simple_query(question):
+            clean_fts = re.sub(r"[^\w\s]", " ", question).strip()
+            return {
+                "fts_query": clean_fts,
+                "semantic_query": question.strip()
+            }
+
         parser_prompt = (
             "You are a search query optimizer for an enterprise assistant. "
             "Analyze the user's input question and extract two clean search components as JSON:\n"
@@ -54,7 +74,7 @@ class RAGPipeline:
                 "semantic_query": parsed.get("semantic_query", question)
             }
         except Exception as e:
-            logging.warning(f"[RAGPipeline] Self-query parsing notice: {e}. Falling back to raw query.")
+            logger.warning(f"[RAGPipeline] Self-query parsing notice: {e}. Falling back to raw query.")
             return {"fts_query": question, "semantic_query": question}
 
     def query(self, question: str, metadata_filters: dict[str, Any] | None = None, chat_history: list[dict] | None = None) -> dict[str, Any]:
