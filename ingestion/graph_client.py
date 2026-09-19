@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 from urllib.parse import urlencode
+import random
 import time
 import logging
 
@@ -27,11 +28,9 @@ class GraphClient:
         """
         Build authenticated request headers.
         """
-
-        access_token = self.authenticator.get_access_token()
-
+        token = self.authenticator.get_access_token()
         return {
-            "Authorization": f"Bearer {access_token}",
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
 
@@ -41,22 +40,23 @@ class GraphClient:
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
-        Execute GET request with pagination support and retry logic.
+        Execute GET request against Microsoft Graph API.
+        Handles OData pagination automatically.
 
         Args:
-            endpoint: API endpoint (e.g., "/users", "/me/mailFolders/inbox/messages")
-            params: Query parameters dict (e.g., {"$top": 50, "$select": "id,name"})
+            endpoint: API path (e.g. "/me/messages")
+            params: Optional query parameters
 
         Returns:
-            Response dict with paginated results in "value" key
+            Aggregated response data with all pages concatenated in "value" list
         """
-        url = f"{settings.graph_api_base_url}{endpoint}"
+        base_url = "https://graph.microsoft.com/v1.0"
+        url = f"{base_url}{endpoint}"
 
         if params:
-            query_string = urlencode(params, safe="$,:")
-            url = f"{url}?{query_string}"
+            url = f"{url}?{urlencode(params)}"
 
-        all_values = []
+        all_values: list[Any] = []
 
         try:
             while url:
@@ -78,14 +78,15 @@ class GraphClient:
     def _make_request_with_retry(
         self,
         url: str,
-        max_retries: int = 2,
+        max_retries: int = 4,
     ) -> requests.Response:
         """
-        Execute GET request with retry logic for 401 (auth) and 429 (rate limit).
+        Execute GET request with retry logic for 401 (auth), 429 (rate limit),
+        and 5xx server errors with exponential backoff and jitter.
 
         Args:
             url: Full request URL
-            max_retries: Number of retries for auth/rate limit errors
+            max_retries: Number of retries for auth/rate limit/server errors
 
         Returns:
             Response object
@@ -93,38 +94,77 @@ class GraphClient:
         Raises:
             requests.RequestException: If request fails after retries
         """
+        last_exception: Exception | None = None
+
         for attempt in range(max_retries + 1):
-            response = requests.get(
-                url,
-                headers=self._get_headers(),
-                timeout=30,
-            )
+            # Timeout escalation: 30s -> 45s -> 60s -> 75s -> 90s
+            timeout = 30 + (attempt * 15)
+
+            try:
+                response = requests.get(
+                    url,
+                    headers=self._get_headers(),
+                    timeout=timeout,
+                )
+            except (requests.Timeout, requests.ConnectionError) as net_err:
+                last_exception = net_err
+                if attempt < max_retries:
+                    backoff = min(2 ** (attempt + 1) + random.uniform(0.5, 2.0), 60.0)
+                    logging.warning(
+                        f"[GraphClient] Network error ({net_err.__class__.__name__}) on attempt {attempt + 1}/{max_retries + 1}. "
+                        f"Retrying in {backoff:.1f}s with timeout={timeout + 15}s..."
+                    )
+                    time.sleep(backoff)
+                    continue
+                else:
+                    raise
 
             # Handle 401 Unauthorized - refresh token and retry
             if response.status_code == 401:
                 if attempt < max_retries:
-                    logging.warning("Received 401 - refreshing token and retrying")
+                    logging.warning("[GraphClient] Received 401 - refreshing token and retrying...")
                     self.authenticator.refresh_token()
                     continue
                 else:
                     response.raise_for_status()
 
-            # Handle 429 Rate Limited - read Retry-After and backoff
+            # Handle 429 Rate Limited - read Retry-After and backoff with jitter
             if response.status_code == 429:
                 if attempt < max_retries:
-                    retry_after = int(response.headers.get("Retry-After", 60))
+                    retry_header = response.headers.get("Retry-After")
+                    try:
+                        retry_after = float(retry_header) if retry_header else 2.0 ** (attempt + 1)
+                    except (ValueError, TypeError):
+                        retry_after = 2.0 ** (attempt + 1)
+                    # Add jitter
+                    sleep_time = min(retry_after + random.uniform(0.2, 1.5), 60.0)
                     logging.warning(
-                        f"Rate limited (429) - waiting {retry_after}s before retry"
+                        f"[GraphClient] Rate limited (429) - waiting {sleep_time:.1f}s before retry (attempt {attempt + 1}/{max_retries + 1})"
                     )
-                    time.sleep(retry_after)
+                    time.sleep(sleep_time)
                     continue
                 else:
                     response.raise_for_status()
 
-            # Success or non-retryable error
+            # Handle 5xx Server Errors (500, 502, 503, 504) with exponential backoff & jitter
+            if 500 <= response.status_code < 600:
+                if attempt < max_retries:
+                    backoff = min(2 ** (attempt + 1) + random.uniform(0.2, 1.5), 60.0)
+                    logging.warning(
+                        f"[GraphClient] Server error ({response.status_code}) on attempt {attempt + 1}/{max_retries + 1}. "
+                        f"Backing off {backoff:.1f}s..."
+                    )
+                    time.sleep(backoff)
+                    continue
+                else:
+                    response.raise_for_status()
+
+            # Success or client error (4xx other than 401/429)
             response.raise_for_status()
             return response
 
+        if last_exception:
+            raise last_exception
         return response
 
     def get_users(self) -> list[dict[str, Any]]:
