@@ -105,7 +105,8 @@ def has_only_attachment_content(body_dict: dict[str, Any], attachments: list[dic
 def sanitize_pii(text: str) -> str:
     """
     Scrubs sensitive credentials, API keys, passwords, credit card numbers,
-    and SSNs before persisting or sending to LLMs.
+    SSNs, emails, phone numbers, AWS keys, and Azure connection strings
+    before persisting or sending to LLMs (S-6).
     """
     if not text:
         return ""
@@ -116,6 +117,14 @@ def sanitize_pii(text: str) -> str:
     text = re.sub(r"ghp_[A-Za-z0-9]{36}", "[REDACTED_GITHUB_TOKEN]", text)
     text = re.sub(r"eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}", "[REDACTED_JWT_TOKEN]", text)
 
+    # AWS Access Keys & Secret Keys
+    text = re.sub(r"\bAKIA[0-9A-Z]{16}\b", "[REDACTED_AWS_KEY]", text)
+    text = re.sub(r"(?i)\b(aws_secret_access_key|aws_secret_key)\s*[:=]\s*[A-Za-z0-9/+=]{40}", r"\1: [REDACTED_AWS_SECRET]", text)
+
+    # Azure connection strings and SAS tokens
+    text = re.sub(r"(?i)DefaultEndpointsProtocol=https?;AccountName=[^;]+;AccountKey=[^;]+[^\s]*", "[REDACTED_AZURE_CONNECTION_STRING]", text)
+    text = re.sub(r"(?i)SharedAccessSignature=[^&\s]+", "[REDACTED_AZURE_SAS]", text)
+
     # Passwords in plain text
     text = re.sub(r"(?i)\b(password|passwd|pwd|secret_key)\s*[:=]\s*[^\s]+", r"\1: [REDACTED_SECRET]", text)
 
@@ -124,6 +133,12 @@ def sanitize_pii(text: str) -> str:
 
     # US Social Security Numbers
     text = re.sub(r"\b\d{3}-\d{2}-\d{4}\b", "[REDACTED_SSN]", text)
+
+    # Email addresses
+    text = re.sub(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "[REDACTED_EMAIL]", text)
+
+    # Phone numbers (E.164, US formats, etc.)
+    text = re.sub(r"(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b", "[REDACTED_PHONE]", text)
 
     return text
 
