@@ -19,20 +19,27 @@ logger = logging.getLogger(__name__)
 
 _DB_DIR = Path(__file__).resolve().parent.parent / "data" / "chroma_db"
 
+_client_instance: chromadb.PersistentClient | None = None
+_collection_instance: Any | None = None
+
 
 class ChromaVectorStore:
     """
     Manages collection storage, updates, and cosine metadata queries in ChromaDB.
+    Reuses a singleton PersistentClient to avoid disk and lock contention (P-5).
     """
 
     def __init__(self) -> None:
-        os.makedirs(_DB_DIR, exist_ok=True)
-        # Use PersistentClient to save vectors to data/chroma_db
-        self.client = chromadb.PersistentClient(path=str(_DB_DIR))
-        self.collection = self.client.get_or_create_collection(
-            name="org_threads",
-            metadata={"hnsw:space": "cosine"}
-        )
+        global _client_instance, _collection_instance
+        if _client_instance is None:
+            os.makedirs(_DB_DIR, exist_ok=True)
+            _client_instance = chromadb.PersistentClient(path=str(_DB_DIR))
+            _collection_instance = _client_instance.get_or_create_collection(
+                name="org_threads",
+                metadata={"hnsw:space": "cosine"}
+            )
+        self.client = _client_instance
+        self.collection = _collection_instance
 
     def add_documents(self, chunks: list[dict[str, Any]], embeddings: list[list[float]]) -> bool:
         """
