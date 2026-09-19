@@ -16,7 +16,11 @@ workspace_path = Path(__file__).resolve().parent
 if str(workspace_path) not in sys.path:
     sys.path.insert(0, str(workspace_path))
 
+import logging
+from shared.version import __version__
 import shared.logging_config
+
+logger = logging.getLogger(__name__)
 
 
 REQUIRED_PACKAGES = {
@@ -29,18 +33,18 @@ REQUIRED_PACKAGES = {
     "chromadb": "chromadb",
     "onnxruntime": "onnxruntime",
     "apscheduler": "apscheduler",
-    "bs4": "beautifulsoup4",
     "cryptography": "cryptography",
     "pytz": "pytz",
     "markdownify": "markdownify",
-    "websockets": "websockets"
+    "websockets": "websockets",
+    "httpx": "httpx",
 }
 
 
-def ensure_requirements_installed() -> None:
+def ensure_requirements_installed(auto_install: bool = False) -> None:
     """
     Checks if all required Python packages are installed in the current environment.
-    If any package is missing, automatically installs them from requirements.txt.
+    If any package is missing and auto_install is True, installs them from requirements.txt.
     """
     missing = []
     for module_name, package_name in REQUIRED_PACKAGES.items():
@@ -50,8 +54,8 @@ def ensure_requirements_installed() -> None:
     if missing:
         print(f"\n[Dependency Manager] Missing required packages detected: {', '.join(missing)}")
         req_file = workspace_path / "requirements.txt"
-        if req_file.exists():
-            print(f"[Dependency Manager] Auto-installing dependencies from requirements.txt...")
+        if auto_install and req_file.exists():
+            print("[Dependency Manager] Auto-installing dependencies from requirements.txt...")
             try:
                 subprocess.check_call([
                     sys.executable, "-m", "pip", "install", "-r", str(req_file)
@@ -60,8 +64,12 @@ def ensure_requirements_installed() -> None:
             except subprocess.CalledProcessError as e:
                 print(f"[Dependency Manager Error] Automatic package installation failed: {e}")
                 print("Please run: pip install -r requirements.txt manually.\n")
+                sys.exit(1)
         else:
-            print("[Dependency Manager Warning] requirements.txt not found in workspace root.\n")
+            print("[Dependency Manager] To install missing packages, run: pip install -r requirements.txt")
+            print("Or pass --auto-install to install them automatically.\n")
+            if not auto_install and missing:
+                sys.exit(1)
     else:
         print("[Dependency Manager] All required packages are installed and verified.")
 
@@ -71,7 +79,7 @@ def start_server(host: str = "127.0.0.1", port: int = 8080, reload: bool = False
     import uvicorn
 
     print(f"\n{'=' * 60}")
-    print(f"  FOUNDER BUDDY v2.0")
+    print(f"  FOUNDER BUDDY v{__version__}")
     print(f"  Dashboard: http://{host}:{port}/")
     print(f"  Health:    http://{host}:{port}/health")
     print(f"  API Docs:  http://{host}:{port}/docs")
@@ -92,26 +100,26 @@ def wipe_all_data() -> None:
     """Wipes all local SQLite databases, encryption keys, Chroma vector stores, and raw message files for a fresh setup."""
     import shutil
     data_dir = workspace_path / "data"
-    for name in ["founder_buddy.db", "founder_buddy.db-wal", "founder_buddy.db-shm", ".encryption_key"]:
+    for name in ["founder_buddy.db", "founder_buddy.db-wal", "founder_buddy.db-shm", ".encryption_key", ".encryption_key.sig"]:
         f = data_dir / name
         if f.exists():
             try:
                 os.remove(f)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[Clean Slate Notice] Could not remove file {f}: {e}")
     for dir_name in ["chroma_db", "raw_teams_messages", "raw_outlook_messages"]:
         d = data_dir / dir_name
         if d.exists():
             try:
                 shutil.rmtree(d)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[Clean Slate Notice] Could not remove directory {d}: {e}")
     env_file = workspace_path / ".env"
     if env_file.exists():
         try:
             os.remove(env_file)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Clean Slate Notice] Could not remove {env_file}: {e}")
     print("\n[Clean Slate] All previous credentials, databases, vector stores, and logs deleted!\n")
 
 
@@ -131,14 +139,18 @@ def main() -> None:
     parser.add_argument(
         "--clean", action="store_true", help="Clean slate wipe of all databases, credentials, and message logs before starting"
     )
+    parser.add_argument(
+        "--auto-install", action="store_true", help="Automatically install missing dependencies from requirements.txt"
+    )
 
     args = parser.parse_args()
 
     if args.clean:
         wipe_all_data()
 
-    # Step 1: Verify & Auto-install missing requirements if needed
-    ensure_requirements_installed()
+    # Step 1: Verify requirements (auto-install only if flag or env var is set)
+    auto_install = args.auto_install or os.environ.get("AUTO_INSTALL_DEPS", "").lower() in ("1", "true")
+    ensure_requirements_installed(auto_install=auto_install)
 
     # Step 2: Start the web server / dashboard
     # HOST and PORT env vars allow Docker/Render deployments without changing CLI args
