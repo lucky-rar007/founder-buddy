@@ -35,45 +35,48 @@ _local = threading.local()
 _MAX_CONNECTION_AGE = 300  # 5 minutes
 
 
-def get_connection() -> sqlite3.Connection:
+def get_connection(fresh: bool = False) -> sqlite3.Connection:
     """
-    Get a thread-local SQLite connection.
+    Get an SQLite connection.
 
-    Uses WAL journal mode for concurrent read/write.
-    Returns the same connection per thread to avoid overhead.
+    Uses WAL journal mode for concurrent read/write and check_same_thread=False
+    for resilience in async runtimes where coroutines can switch threads.
+    Returns the same connection per thread unless fresh=True.
     Proactively recycles connections older than 5 minutes.
     """
-    conn = getattr(_local, "connection", None)
-    created_at = getattr(_local, "connection_created_at", 0)
+    if not fresh:
+        conn = getattr(_local, "connection", None)
+        created_at = getattr(_local, "connection_created_at", 0)
 
-    if conn is not None:
-        # Recycle stale connections proactively
-        if (_time.time() - created_at) > _MAX_CONNECTION_AGE:
-            try:
-                conn.close()
-            except Exception:
-                pass
-            conn = None
-            _local.connection = None
-        else:
-            try:
-                conn.execute("SELECT 1")
-                return conn
-            except sqlite3.ProgrammingError:
-                # Connection was closed, create a new one
-                _local.connection = None
+        if conn is not None:
+            # Recycle stale connections proactively
+            if (_time.time() - created_at) > _MAX_CONNECTION_AGE:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
                 conn = None
+                _local.connection = None
+            else:
+                try:
+                    conn.execute("SELECT 1")
+                    return conn
+                except (sqlite3.ProgrammingError, sqlite3.OperationalError):
+                    # Connection was closed or invalid, create a new one
+                    _local.connection = None
+                    conn = None
 
     DB_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
-        conn = sqlite3.connect(str(DB_FILE), timeout=30.0)
+        conn = sqlite3.connect(str(DB_FILE), timeout=30.0, check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA busy_timeout=10000")
         conn.row_factory = sqlite3.Row
-        _local.connection = conn
-        _local.connection_created_at = _time.time()
+        if not fresh:
+            _local.connection = conn
+            _local.connection_created_at = _time.time()
         return conn
     except sqlite3.OperationalError as e:
         logger.error(f"[Database] Failed to connect to {DB_FILE}: {e}")
@@ -81,22 +84,45 @@ def get_connection() -> sqlite3.Connection:
 
 
 @contextmanager
-def get_db():
+def get_db(write: bool = True):
     """
     Context manager for database operations.
 
-    Provides a connection and handles commit/rollback automatically.
+    Args:
+        write: If True (default), automatically commits on success and rolls back on error.
+               If False, operates in read-only mode without committing (saves disk I/O).
     Usage:
         with get_db() as conn:
             conn.execute("INSERT INTO ...", (...))
+        with get_db(write=False) as conn:
+            row = conn.execute("SELECT ...").fetchone()
     """
     conn = get_connection()
     try:
         yield conn
-        conn.commit()
+        if write:
+            conn.commit()
     except Exception:
-        conn.rollback()
+        if write:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         raise
+
+
+@contextmanager
+def get_db_read():
+    """Read-only database context manager (P-3: avoids unnecessary commits)."""
+    with get_db(write=False) as conn:
+        yield conn
+
+
+@contextmanager
+def get_db_write():
+    """Write database context manager with auto-commit and rollback."""
+    with get_db(write=True) as conn:
+        yield conn
 
 
 def close_connection():
@@ -125,6 +151,15 @@ CREATE TABLE IF NOT EXISTS app_config (
     value       TEXT NOT NULL,
     encrypted   INTEGER DEFAULT 0,
     updated_at  TEXT DEFAULT (datetime('now'))
+);
+
+-- Model quota counters (dedicated table to eliminate write contention on app_config)
+CREATE TABLE IF NOT EXISTS model_quota_counters (
+    date            TEXT NOT NULL,
+    model_id        TEXT NOT NULL,
+    request_count   INTEGER NOT NULL DEFAULT 0,
+    updated_at      TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (date, model_id)
 );
 
 -- Ingestion state tracker (per source per day)
@@ -439,9 +474,20 @@ def init_db():
 # CONFIG HELPERS
 # ─────────────────────────────────────────────────────────────────────
 
+# Known operational tables for safe deletion (S-3)
+KNOWN_OPERATIONAL_TABLES = frozenset({
+    "events", "signals", "actionables", "dragging_issues",
+    "summaries", "rag_documents", "pipeline_runs", "ingestion_log", "threads",
+    "app_config", "excluded_channels", "model_quota_counters"
+})
+
+
 def get_config(key: str) -> str | None:
-    """Get a config value by key. Returns None if not found."""
-    with get_db() as conn:
+    """
+    Get a config value by key.
+    Returns None if not found or if decryption fails (with logged error).
+    """
+    with get_db_read() as conn:
         row = conn.execute(
             "SELECT value, encrypted FROM app_config WHERE key = ?", (key,)
         ).fetchone()
@@ -456,7 +502,7 @@ def get_config(key: str) -> str | None:
             from shared.crypto import decryptor
             value = decryptor.decrypt(value)
         except Exception as e:
-            logger.error(f"[Database] Failed to decrypt config '{key}': {e}")
+            logger.error(f"[Database] Failed to decrypt encrypted config for key='{key}': {e}")
             return None
 
     return value
@@ -474,7 +520,7 @@ def set_config(key: str, value: str, encrypt: bool = False):
             logger.error(f"[Database] Failed to encrypt config '{key}': {e}")
             raise
 
-    with get_db() as conn:
+    with get_db_write() as conn:
         conn.execute(
             """INSERT INTO app_config (key, value, encrypted, updated_at)
                VALUES (?, ?, ?, datetime('now'))
@@ -488,7 +534,7 @@ def set_config(key: str, value: str, encrypt: bool = False):
 
 def get_all_config() -> dict[str, str]:
     """Get all config values as a dict. Decrypts encrypted values."""
-    with get_db() as conn:
+    with get_db_read() as conn:
         rows = conn.execute("SELECT key, value, encrypted FROM app_config").fetchall()
 
     config = {}
@@ -507,7 +553,7 @@ def get_all_config() -> dict[str, str]:
 
 def is_onboarded() -> bool:
     """Check if the initial onboarding has been completed."""
-    with get_db() as conn:
+    with get_db_read() as conn:
         row = conn.execute(
             "SELECT COUNT(*) FROM app_config WHERE key = 'onboarding_completed'"
         ).fetchone()
@@ -516,7 +562,7 @@ def is_onboarded() -> bool:
 
 def delete_config(key: str):
     """Delete a config entry."""
-    with get_db() as conn:
+    with get_db_write() as conn:
         conn.execute("DELETE FROM app_config WHERE key = ?", (key,))
 
 
@@ -524,15 +570,21 @@ def reset_db(preserve_config: bool = True):
     """
     Clean operational database tables.
     If preserve_config is True, app_config and excluded_channels are preserved.
+    Uses strict table name validation to prevent SQL injection (S-3).
     """
-    with get_db() as conn:
-        tables = [
-            "events", "signals", "actionables", "dragging_issues",
-            "summaries", "rag_documents", "pipeline_runs", "ingestion_log", "threads"
-        ]
-        if not preserve_config:
-            tables.extend(["app_config", "excluded_channels"])
+    tables = [
+        "events", "signals", "actionables", "dragging_issues",
+        "summaries", "rag_documents", "pipeline_runs", "ingestion_log", "threads"
+    ]
+    if not preserve_config:
+        tables.extend(["app_config", "excluded_channels"])
 
+    # Validate against known tables whitelist
+    for t in tables:
+        if t not in KNOWN_OPERATIONAL_TABLES:
+            raise ValueError(f"Disallowed table name in reset_db: {t}")
+
+    with get_db_write() as conn:
         for t in tables:
             try:
                 conn.execute(f"DELETE FROM {t}")
@@ -563,7 +615,7 @@ def fts_search(query_str: str, limit: int = 15) -> list[dict]:
 
     match_query = " OR ".join(safe_terms)
 
-    with get_db() as conn:
+    with get_db_read() as conn:
         sql = """
             SELECT t.thread_id, t.source, t.subject, t.participants, t.message_count,
                    t.first_message_at, t.last_message_at, t.team_name, t.channel_name,
