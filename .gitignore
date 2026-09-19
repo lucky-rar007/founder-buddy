@@ -153,7 +153,6 @@ Thumbs.db
 
 # Project Goals
 goal.txt
-Architecture.md
 
 # Data Directory (database, encryption keys, raw messages, vector store)
 data/
