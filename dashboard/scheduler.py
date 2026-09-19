@@ -137,7 +137,11 @@ class SchedulerEngine:
 
                 try:
                     target_hour, target_minute = int(target_time[:2]), int(target_time[3:5])
-                except (ValueError, IndexError):
+                except (ValueError, IndexError) as pe:
+                    logger.warning(
+                        f"[Scheduler] Invalid preferred_sync_time format '{target_time}'. "
+                        f"Expected 'HH:MM' (e.g. '02:00'). Defaulting to 02:00. Error: {pe}"
+                    )
                     target_hour, target_minute = 2, 0
 
                 if (now.hour == target_hour and now.minute == target_minute
