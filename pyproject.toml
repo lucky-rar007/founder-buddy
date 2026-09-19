@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "founder-buddy"
+version = "2.1.0"
+description = "Intelligent workspace assistant for founders"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.7.0",
+    "requests>=2.31.0",
+    "httpx>=0.27.0",
+    "google-generativeai>=0.8.0",
+    "chromadb>=0.5.0",
+    "onnxruntime>=1.18.0",
+    "onnx>=1.16.0",
+    "numpy>=1.26.0",
+    "apscheduler>=3.10.1",
+    "cryptography>=42.0.0",
+    "pytz>=2024.1",
+    "markdownify>=0.11.6",
+    "websockets>=12.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]
+markers = [
+    "integration: marks tests requiring integration environments",
+    "unit: fast unit tests",
+]
