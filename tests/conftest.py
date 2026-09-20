@@ -5,10 +5,16 @@ Provides reusable fixtures for FastAPI test client, database initialization,
 and mock API credentials to ensure hermetic and reproducible test runs.
 """
 
-import pytest
+import sys
 import tempfile
 from pathlib import Path
+import pytest
 from fastapi.testclient import TestClient
+
+# Ensure repository root is in sys.path regardless of execution environment or runner
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 
 @pytest.fixture(scope="session", autouse=True)

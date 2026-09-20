@@ -29,5 +29,6 @@ jobs:
       - name: Run Test Suite
         env:
           GEMINI_API_KEY: "AIzaSy_mock_ci_key"
+          PYTHONPATH: "."
         run: |
-          pytest tests/ -v --tb=short
+          python -m pytest tests/ -v --tb=short
