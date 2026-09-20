@@ -55,6 +55,31 @@ def setup_test_db(tmp_path_factory):
             pass
 
 
+@pytest.fixture(scope="session", autouse=True)
+def setup_test_chroma(tmp_path_factory):
+    """
+    Redirect ChromaDB's persist directory to a writable temp path.
+    On CI runners the repo checkout is read-only for SQLite WAL writes,
+    which causes 'attempt to write a readonly database' errors.
+    """
+    import rag.vectorstore as vs_module
+
+    tmp_chroma = tmp_path_factory.mktemp("test_chroma")
+
+    original_db_dir = vs_module._DB_DIR
+    vs_module._DB_DIR = tmp_chroma
+
+    # Reset the singleton so the next ChromaVectorStore() picks up the temp path
+    vs_module._client_instance = None
+    vs_module._collection_instance = None
+
+    yield
+
+    vs_module._DB_DIR = original_db_dir
+    vs_module._client_instance = None
+    vs_module._collection_instance = None
+
+
 @pytest.fixture(scope="function")
 def api_client():
     """Provides a fresh FastAPI TestClient for endpoint integration tests (T-3: function-scoped)."""
